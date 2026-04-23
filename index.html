@@ -393,9 +393,130 @@
       return Promise.all(list.map(c => fetchCommit(owner, repo, c.sha)));
     }
 
-    // --- Analyze button (wired in Phase 5) ---
-    document.getElementById("analyze-btn").addEventListener("click", () => {
-      showError("Claude integration coming in next phase.");
+    // --- Claude API ---
+    async function analyzeCommit(commit, diff) {
+      const apiKey = (typeof CONFIG !== "undefined") ? CONFIG.ANTHROPIC_API_KEY : null;
+      if (!apiKey || apiKey === "your-api-key-here") {
+        throw new Error("No API key found. Copy config.sample.js to config.js and add your Anthropic API key.");
+      }
+
+      const userMessage =
+        `Commit SHA: ${commit.sha}\n` +
+        `Author: ${commit.author}\n` +
+        `Date: ${commit.date}\n` +
+        `Message: ${commit.message}\n\n` +
+        `Diff:\n${diff}`;
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2000,
+          system:
+            "You are a Senior SDET. Analyze the provided git commit and return a JSON object only — no markdown, no explanation, just raw JSON.\n\n" +
+            "Return exactly this structure:\n" +
+            "{\n" +
+            '  "qa_summary": "plain text summary of what changed from a QA perspective",\n' +
+            '  "risk_level": "Low | Medium | High | Critical",\n' +
+            '  "risk_reasoning": "one sentence explaining the risk rating",\n' +
+            '  "impacted_areas": ["area1", "area2"],\n' +
+            '  "areas_needing_testing": ["area1", "area2"],\n' +
+            '  "test_scenarios": [\n' +
+            '    "Scenario description with input and expected result"\n' +
+            "  ]\n" +
+            "}\n\n" +
+            "No BDD. No Given/When/Then. Plain language only.",
+          messages: [{ role: "user", content: userMessage }],
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message ?? `Claude API error (${res.status}).`);
+      }
+
+      const data = await res.json();
+      return parseAnalysis(data.content[0].text);
+    }
+
+    function parseAnalysis(text) {
+      try {
+        const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+        return JSON.parse(cleaned);
+      } catch {
+        return {
+          qa_summary: text,
+          risk_level: "Medium",
+          risk_reasoning: "Could not parse structured response.",
+          impacted_areas: [],
+          areas_needing_testing: [],
+          test_scenarios: [],
+        };
+      }
+    }
+
+    // --- Analyze button ---
+    document.getElementById("analyze-btn").addEventListener("click", async () => {
+      const repoUrl = document.getElementById("repo-url").value.trim();
+      const mode    = document.querySelector('input[name="mode"]:checked').value;
+      const btn     = document.getElementById("analyze-btn");
+
+      if (!repoUrl) { showError("Please enter a GitHub repository URL."); return; }
+
+      let owner, repo;
+      try {
+        ({ owner, repo } = parseRepoUrl(repoUrl));
+      } catch (e) {
+        showError(e.message);
+        return;
+      }
+
+      btn.disabled = true;
+
+      try {
+        showSpinner("Fetching commits from GitHub…");
+
+        let commits;
+        if (mode === "specific") {
+          const sha = document.getElementById("commit-sha").value.trim();
+          if (!sha) { showError("Please enter a commit SHA."); return; }
+          commits = [await fetchCommit(owner, repo, sha)];
+        } else {
+          const n = Math.min(10, Math.max(1, parseInt(document.getElementById("commit-count").value) || 5));
+          commits = await fetchLastNCommits(owner, repo, n);
+        }
+
+        const allResults = [];
+        for (let i = 0; i < commits.length; i++) {
+          showSpinner(`Analyzing commit ${i + 1} of ${commits.length} with Claude…`);
+          const commit = commits[i];
+          const diff = await fetchPatch(owner, repo, commit.sha);
+          const analysis = await analyzeCommit(commit, diff);
+          allResults.push({ commit, analysis });
+        }
+
+        const results = document.getElementById("results-section");
+        document.getElementById("empty-state").classList.add("hidden");
+        results.classList.remove("hidden");
+        results.innerHTML = allResults.map(({ commit, analysis }, i) =>
+          renderCommitCard(commit, analysis, i)
+        ).join("");
+
+      } catch (e) {
+        if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError")) {
+          showError("Network error. Check your connection.");
+        } else {
+          showError(e.message);
+        }
+      } finally {
+        btn.disabled = false;
+      }
     });
   </script>
 </body>
