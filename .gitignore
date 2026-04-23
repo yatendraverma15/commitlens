@@ -1,1 +1,5 @@
-config.js
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env

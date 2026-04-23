@@ -16,7 +16,6 @@
       flex-direction: column;
     }
 
-    /* HEADER */
     header {
       background: #0f172a;
       color: #fff;
@@ -26,7 +25,6 @@
     header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
     header p  { margin-top: 0.4rem; color: #94a3b8; font-size: 0.95rem; }
 
-    /* MAIN */
     main {
       flex: 1;
       max-width: 820px;
@@ -38,7 +36,6 @@
       gap: 1.5rem;
     }
 
-    /* CARDS */
     .card {
       background: #fff;
       border-radius: 12px;
@@ -54,7 +51,6 @@
       letter-spacing: 0.05em;
     }
 
-    /* INPUTS */
     .field { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
     .field:last-child { margin-bottom: 0; }
     label { font-size: 0.85rem; font-weight: 500; color: #64748b; }
@@ -105,7 +101,6 @@
 
     #action-bar { display: none; justify-content: flex-end; gap: 0.75rem; margin-bottom: 0.5rem; }
 
-    /* EMPTY STATE */
     #empty-state {
       text-align: center;
       color: #94a3b8;
@@ -113,7 +108,6 @@
       font-size: 0.95rem;
     }
 
-    /* RESULTS */
     #results-section { display: flex; flex-direction: column; gap: 1.25rem; }
 
     .commit-card { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
@@ -169,7 +163,6 @@
     }
     ul.bullet-list li, ol.numbered-list li { font-size: 0.88rem; color: #334155; line-height: 1.5; }
 
-    /* ERROR */
     .error-msg {
       background: #fef2f2;
       border: 1px solid #fecaca;
@@ -179,7 +172,6 @@
       font-size: 0.88rem;
     }
 
-    /* SPINNER */
     .spinner-wrap { text-align: center; padding: 2rem; color: #64748b; font-size: 0.9rem; }
     .spinner {
       display: inline-block;
@@ -193,8 +185,6 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ACTIONS */
-    .action-bar { display: flex; gap: 0.75rem; justify-content: flex-end; }
     .btn-secondary {
       padding: 0.45rem 1rem;
       border: 1px solid #cbd5e1;
@@ -208,7 +198,6 @@
     }
     .btn-secondary:hover { background: #f1f5f9; }
 
-    /* FOOTER */
     footer {
       text-align: center;
       padding: 1.25rem;
@@ -226,7 +215,6 @@
   </header>
 
   <main>
-    <!-- INPUT CARD -->
     <div class="card">
       <h2>Analyze Commits</h2>
 
@@ -259,7 +247,6 @@
       <button id="analyze-btn">Analyze</button>
     </div>
 
-    <!-- OUTPUT CARD -->
     <div class="card" id="output-card">
       <div id="action-bar">
         <button class="btn-secondary" id="clear-btn">Clear</button>
@@ -274,9 +261,8 @@
     Powered by <a href="https://www.anthropic.com" target="_blank">Claude</a> &amp; GitHub API
   </footer>
 
-  <script src="config.js"></script>
   <script>
-    // --- UI toggle ---
+    // --- UI mode toggle ---
     document.querySelectorAll('input[name="mode"]').forEach(radio => {
       radio.addEventListener("change", () => {
         const specific = radio.value === "specific";
@@ -285,15 +271,16 @@
       });
     });
 
-    // --- Helpers ---
+    // --- Display helpers ---
     function setActionBar(visible) {
       document.getElementById("action-bar").style.display = visible ? "flex" : "none";
     }
 
     function showEmpty() {
       document.getElementById("empty-state").classList.remove("hidden");
-      document.getElementById("results-section").classList.add("hidden");
-      document.getElementById("results-section").innerHTML = "";
+      const sec = document.getElementById("results-section");
+      sec.classList.add("hidden");
+      sec.innerHTML = "";
       setActionBar(false);
     }
 
@@ -311,6 +298,65 @@
       const sec = document.getElementById("results-section");
       sec.classList.remove("hidden");
       sec.innerHTML = `<div class="error-msg">${msg}</div>`;
+    }
+
+    function riskClass(level) {
+      return { Low: "risk-low", Medium: "risk-medium", High: "risk-high", Critical: "risk-critical" }[level] ?? "risk-medium";
+    }
+
+    function renderList(items, ordered) {
+      const tag = ordered ? "ol" : "ul";
+      const cls = ordered ? "numbered-list" : "bullet-list";
+      if (!items || items.length === 0) return `<div style="color:#94a3b8;font-size:0.85rem;">None.</div>`;
+      return `<${tag} class="${cls}">${items.map(i => `<li>${escapeHtml(i)}</li>`).join("")}</${tag}>`;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function renderCommitCard(commit, analysis) {
+      const shortSha = commit.sha.slice(0, 7);
+      const risk = analysis.risk_level ?? "Medium";
+      return `
+        <div class="commit-card">
+          <div class="commit-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
+            <span class="sha">${shortSha}</span>
+            <span class="meta">${escapeHtml(commit.author)} &middot; ${new Date(commit.date).toLocaleDateString()}</span>
+            <span class="toggle">&#9660;</span>
+          </div>
+          <div class="commit-body">
+            <div class="commit-msg">"${escapeHtml(commit.message)}"</div>
+
+            <div>
+              <div class="section-label">QA Summary</div>
+              <div class="qa-summary">${escapeHtml(analysis.qa_summary ?? "—")}</div>
+            </div>
+
+            <div>
+              <div class="section-label">Risk Level</div>
+              <span class="risk-badge ${riskClass(risk)}">${risk}</span>
+              <div class="risk-reasoning">${escapeHtml(analysis.risk_reasoning ?? "")}</div>
+            </div>
+
+            <div>
+              <div class="section-label">Impacted Functional Areas</div>
+              ${renderList(analysis.impacted_areas, false)}
+            </div>
+
+            <div>
+              <div class="section-label">Areas Needing Testing</div>
+              ${renderList(analysis.areas_needing_testing, false)}
+            </div>
+
+            <div>
+              <div class="section-label">Test Scenario Suggestions</div>
+              ${renderList(analysis.test_scenarios, true)}
+            </div>
+          </div>
+        </div>`;
     }
 
     // --- Clear ---
@@ -350,167 +396,6 @@
       });
     });
 
-    function riskClass(level) {
-      return { Low: "risk-low", Medium: "risk-medium", High: "risk-high", Critical: "risk-critical" }[level] ?? "risk-medium";
-    }
-
-    function renderList(items, ordered) {
-      const tag = ordered ? "ol" : "ul";
-      const cls = ordered ? "numbered-list" : "bullet-list";
-      return `<${tag} class="${cls}">${items.map(i => `<li>${i}</li>`).join("")}</${tag}>`;
-    }
-
-    function renderCommitCard(commit, analysis, index) {
-      const shortSha = commit.sha.slice(0, 7);
-      const risk = analysis.risk_level ?? "Medium";
-      return `
-        <div class="commit-card">
-          <div class="commit-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
-            <span class="sha">${shortSha}</span>
-            <span class="meta">${commit.author} &middot; ${new Date(commit.date).toLocaleDateString()}</span>
-            <span class="toggle">&#9660;</span>
-          </div>
-          <div class="commit-body">
-            <div class="commit-msg">"${commit.message}"</div>
-
-            <div>
-              <div class="section-label">QA Summary</div>
-              <div class="qa-summary">${analysis.qa_summary ?? "—"}</div>
-            </div>
-
-            <div>
-              <div class="section-label">Risk Level</div>
-              <span class="risk-badge ${riskClass(risk)}">${risk}</span>
-              <div class="risk-reasoning">${analysis.risk_reasoning ?? ""}</div>
-            </div>
-
-            <div>
-              <div class="section-label">Impacted Functional Areas</div>
-              ${renderList(analysis.impacted_areas ?? [], false)}
-            </div>
-
-            <div>
-              <div class="section-label">Areas Needing Testing</div>
-              ${renderList(analysis.areas_needing_testing ?? [], false)}
-            </div>
-
-            <div>
-              <div class="section-label">Test Scenario Suggestions</div>
-              ${renderList(analysis.test_scenarios ?? [], true)}
-            </div>
-          </div>
-        </div>`;
-    }
-
-    // --- GitHub API ---
-    function parseRepoUrl(url) {
-      const match = url.trim().replace(/\.git$/, "").match(/github\.com\/([^/]+)\/([^/]+)/);
-      if (!match) throw new Error("Invalid GitHub URL.");
-      return { owner: match[1], repo: match[2] };
-    }
-
-    async function githubFetch(url, opts = {}) {
-      const res = await fetch(url, opts);
-      if (res.status === 404) throw new Error("Repository or commit not found. Check the URL or SHA.");
-      if (res.status === 403 || res.status === 429) throw new Error("GitHub API rate limit reached. Try again later.");
-      if (!res.ok) throw new Error(`GitHub API error (${res.status}).`);
-      return res;
-    }
-
-    async function fetchPatch(owner, repo, sha) {
-      const res = await githubFetch(
-        `https://api.github.com/repos/${owner}/${repo}/commits/${sha}`,
-        { headers: { Accept: "application/vnd.github.diff" } }
-      );
-      return res.text();
-    }
-
-    async function fetchCommit(owner, repo, sha) {
-      const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}`);
-      const data = await res.json();
-      return {
-        sha: data.sha,
-        message: data.commit.message.split("\n")[0],
-        author: data.commit.author.name,
-        date: data.commit.author.date,
-        files: (data.files ?? []).map(f => f.filename),
-      };
-    }
-
-    async function fetchLastNCommits(owner, repo, count) {
-      const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=${count}`);
-      const list = await res.json();
-      return Promise.all(list.map(c => fetchCommit(owner, repo, c.sha)));
-    }
-
-    // --- Claude API ---
-    async function analyzeCommit(commit, diff) {
-      const apiKey = (typeof CONFIG !== "undefined") ? CONFIG.ANTHROPIC_API_KEY : null;
-      if (!apiKey || apiKey === "your-api-key-here") {
-        throw new Error("No API key found. Copy config.sample.js to config.js and add your Anthropic API key.");
-      }
-
-      const userMessage =
-        `Commit SHA: ${commit.sha}\n` +
-        `Author: ${commit.author}\n` +
-        `Date: ${commit.date}\n` +
-        `Message: ${commit.message}\n\n` +
-        `Diff:\n${diff}`;
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 2000,
-          system:
-            "You are a Senior SDET. Analyze the provided git commit and return a JSON object only — no markdown, no explanation, just raw JSON.\n\n" +
-            "Return exactly this structure:\n" +
-            "{\n" +
-            '  "qa_summary": "plain text summary of what changed from a QA perspective",\n' +
-            '  "risk_level": "Low | Medium | High | Critical",\n' +
-            '  "risk_reasoning": "one sentence explaining the risk rating",\n' +
-            '  "impacted_areas": ["area1", "area2"],\n' +
-            '  "areas_needing_testing": ["area1", "area2"],\n' +
-            '  "test_scenarios": [\n' +
-            '    "Scenario description with input and expected result"\n' +
-            "  ]\n" +
-            "}\n\n" +
-            "No BDD. No Given/When/Then. Plain language only.",
-          messages: [{ role: "user", content: userMessage }],
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error?.message ?? `Claude API error (${res.status}).`);
-      }
-
-      const data = await res.json();
-      return parseAnalysis(data.content[0].text);
-    }
-
-    function parseAnalysis(text) {
-      try {
-        const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
-        return JSON.parse(cleaned);
-      } catch {
-        return {
-          qa_summary: text,
-          risk_level: "Medium",
-          risk_reasoning: "Could not parse structured response.",
-          impacted_areas: [],
-          areas_needing_testing: [],
-          test_scenarios: [],
-        };
-      }
-    }
-
     // --- Analyze button ---
     document.getElementById("analyze-btn").addEventListener("click", async () => {
       const repoUrl = document.getElementById("repo-url").value.trim();
@@ -519,52 +404,40 @@
 
       if (!repoUrl) { showError("Please enter a GitHub repository URL."); return; }
 
-      let owner, repo;
-      try {
-        ({ owner, repo } = parseRepoUrl(repoUrl));
-      } catch (e) {
-        showError(e.message);
-        return;
+      let payload = { repo_url: repoUrl, mode };
+      if (mode === "specific") {
+        const sha = document.getElementById("commit-sha").value.trim();
+        if (!sha) { showError("Please enter a commit SHA."); return; }
+        payload.sha = sha;
+      } else {
+        payload.count = parseInt(document.getElementById("commit-count").value) || 5;
       }
 
       btn.disabled = true;
+      showSpinner("Fetching commits and analyzing with Claude… this can take 10–60 seconds.");
 
       try {
-        showSpinner("Fetching commits from GitHub…");
+        const res  = await fetch("/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
 
-        let commits;
-        if (mode === "specific") {
-          const sha = document.getElementById("commit-sha").value.trim();
-          if (!sha) { showError("Please enter a commit SHA."); return; }
-          commits = [await fetchCommit(owner, repo, sha)];
-        } else {
-          const n = Math.min(10, Math.max(1, parseInt(document.getElementById("commit-count").value) || 5));
-          commits = await fetchLastNCommits(owner, repo, n);
-        }
-
-        const allResults = [];
-        for (let i = 0; i < commits.length; i++) {
-          showSpinner(`Analyzing commit ${i + 1} of ${commits.length} with Claude…`);
-          const commit = commits[i];
-          const diff = await fetchPatch(owner, repo, commit.sha);
-          const analysis = await analyzeCommit(commit, diff);
-          allResults.push({ commit, analysis });
+        if (!res.ok) {
+          showError(data.error ?? "Analysis failed.");
+          return;
         }
 
         const results = document.getElementById("results-section");
         document.getElementById("empty-state").classList.add("hidden");
         results.classList.remove("hidden");
-        results.innerHTML = allResults.map(({ commit, analysis }, i) =>
-          renderCommitCard(commit, analysis, i)
-        ).join("");
+        results.innerHTML = data.results
+          .map(({ commit, analysis }) => renderCommitCard(commit, analysis))
+          .join("");
         setActionBar(true);
-
       } catch (e) {
-        if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError")) {
-          showError("Network error. Check your connection.");
-        } else {
-          showError(e.message);
-        }
+        showError("Could not reach the server. Is the Flask app running?");
       } finally {
         btn.disabled = false;
       }
