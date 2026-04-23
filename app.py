@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import urllib.request
 import urllib.error
+from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 
 CLAUDE_BIN = shutil.which("claude") or shutil.which("claude.cmd")
@@ -30,11 +31,14 @@ ANALYSIS_SCHEMA = {
     ],
 }
 
-SYSTEM_PROMPT = (
-    "You are a Senior SDET. Analyze the provided git commit and return a JSON object "
-    "matching the provided schema. No BDD. No Given/When/Then. Plain language only. "
-    "Test scenarios should describe inputs and expected results."
-)
+PROMPT_PATH = Path(__file__).parent / "system_prompt.md"
+try:
+    SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8").strip()
+except FileNotFoundError:
+    raise RuntimeError(
+        f"System prompt file not found at {PROMPT_PATH}. "
+        "Create system_prompt.md in the commitlens/ directory."
+    )
 
 
 class APIError(Exception):
