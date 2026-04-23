@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -8,6 +9,22 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 
 CLAUDE_BIN = shutil.which("claude") or shutil.which("claude.cmd")
+
+TOKEN_FILE = Path(__file__).parent / ".github_token"
+
+
+def load_github_token():
+    if TOKEN_FILE.exists():
+        for line in TOKEN_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line == "PASTE_GITHUB_TOKEN_HERE":
+                continue
+            return line
+    return os.environ.get("GITHUB_TOKEN", "").strip() or None
+
+
+GITHUB_TOKEN = load_github_token()
+print(f"[commitlens] GitHub auth: {'enabled' if GITHUB_TOKEN else 'disabled (public repos only)'}")
 
 INCLUDE_API_DETAILS = False
 
@@ -68,13 +85,18 @@ def parse_repo_url(url):
 
 
 def github_get(url, accept="application/vnd.github+json"):
-    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "CommitLens"})
+    headers = {"Accept": accept, "User-Agent": "CommitLens"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise APIError("Repository or commit not found. Check the URL or SHA.")
+        if e.code == 401:
+            raise APIError("GitHub token is invalid or expired. Update .github_token.")
         if e.code in (403, 429):
             raise APIError("GitHub API rate limit reached. Try again later.")
         raise APIError(f"GitHub API error ({e.code}).")
