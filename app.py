@@ -9,6 +9,17 @@ from flask import Flask, render_template, request, jsonify
 
 CLAUDE_BIN = shutil.which("claude") or shutil.which("claude.cmd")
 
+INCLUDE_API_DETAILS = False
+
+NO_API_APPEND = (
+    "RUNTIME OVERRIDE: exclude all API-level content from qa_summary, impacted_areas, "
+    "areas_needing_testing, and test_scenarios. Do NOT mention HTTP methods, endpoints, "
+    "URLs, status codes, request or response JSON shapes, field names, or header values. "
+    "Express every behavior in user-facing functional terms only: what the user does, what "
+    "they see, and what the application does for them. Validation failures must be described "
+    "as the message or UI state the user observes, not as HTTP codes."
+)
+
 app = Flask(__name__)
 
 ANALYSIS_SCHEMA = {
@@ -32,9 +43,7 @@ ANALYSIS_SCHEMA = {
 }
 
 PROMPT_PATH = Path(__file__).parent / "system_prompt.md"
-try:
-    SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8").strip()
-except FileNotFoundError:
+if not PROMPT_PATH.exists():
     raise RuntimeError(
         f"System prompt file not found at {PROMPT_PATH}. "
         "Create system_prompt.md in the commitlens/ directory."
@@ -118,8 +127,10 @@ def analyze_with_claude(commit, diff):
         "--model", "opus",
         "--output-format", "json",
         "--json-schema", json.dumps(ANALYSIS_SCHEMA),
-        "--system-prompt", SYSTEM_PROMPT,
+        "--system-prompt-file", str(PROMPT_PATH),
     ]
+    if not INCLUDE_API_DETAILS:
+        cmd += ["--append-system-prompt", NO_API_APPEND]
 
     try:
         result = subprocess.run(

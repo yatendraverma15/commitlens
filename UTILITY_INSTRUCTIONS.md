@@ -253,3 +253,27 @@ Do not push yet.
 ```
 Push all commits to origin main and confirm with git log --oneline.
 ```
+
+---
+
+## Phase 8: Output History (max 5)
+
+```
+Update the web UI so the output window preserves prior analyses instead of
+overwriting them on every run:
+
+1. On each successful analysis, prepend the new commit card(s) to the top of
+   the results section instead of replacing the section's contents.
+
+2. If the user re-analyzes a commit that is already in the output, the old
+   card for that commit is removed before the new one is added, so each
+   commit appears at most once.
+
+3. Cap the output at 5 commit cards total. After prepending, trim older cards
+   from the bottom so at most 5 remain.
+
+4. Insert the loading spinner and any error banner at the top of the results
+   section without clearing existing cards.
+
+5. The Clear button continues to wipe all cards and return to the empty state.
+```
