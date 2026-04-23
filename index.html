@@ -103,6 +103,8 @@
     button#analyze-btn:hover:not(:disabled) { background: #4f46e5; }
     button#analyze-btn:disabled { background: #a5b4fc; cursor: not-allowed; }
 
+    #action-bar { display: none; justify-content: flex-end; gap: 0.75rem; margin-bottom: 0.5rem; }
+
     /* EMPTY STATE */
     #empty-state {
       text-align: center;
@@ -259,6 +261,10 @@
 
     <!-- OUTPUT CARD -->
     <div class="card" id="output-card">
+      <div id="action-bar">
+        <button class="btn-secondary" id="clear-btn">Clear</button>
+        <button class="btn-secondary" id="copy-btn">Copy Report</button>
+      </div>
       <div id="empty-state">Enter a GitHub repo URL and commit details to get started.</div>
       <div id="results-section" class="hidden"></div>
     </div>
@@ -280,14 +286,20 @@
     });
 
     // --- Helpers ---
+    function setActionBar(visible) {
+      document.getElementById("action-bar").style.display = visible ? "flex" : "none";
+    }
+
     function showEmpty() {
       document.getElementById("empty-state").classList.remove("hidden");
       document.getElementById("results-section").classList.add("hidden");
       document.getElementById("results-section").innerHTML = "";
+      setActionBar(false);
     }
 
     function showSpinner(msg) {
       document.getElementById("empty-state").classList.add("hidden");
+      setActionBar(false);
       const sec = document.getElementById("results-section");
       sec.classList.remove("hidden");
       sec.innerHTML = `<div class="spinner-wrap"><span class="spinner"></span>${msg}</div>`;
@@ -295,10 +307,48 @@
 
     function showError(msg) {
       document.getElementById("empty-state").classList.add("hidden");
+      setActionBar(false);
       const sec = document.getElementById("results-section");
       sec.classList.remove("hidden");
       sec.innerHTML = `<div class="error-msg">${msg}</div>`;
     }
+
+    // --- Clear ---
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      document.getElementById("repo-url").value = "";
+      document.getElementById("commit-sha").value = "";
+      document.getElementById("commit-count").value = "5";
+      document.querySelector('input[name="mode"][value="specific"]').checked = true;
+      document.getElementById("sha-field").classList.remove("hidden");
+      document.getElementById("n-field").classList.add("hidden");
+      showEmpty();
+    });
+
+    // --- Copy Report ---
+    document.getElementById("copy-btn").addEventListener("click", () => {
+      const cards = document.querySelectorAll(".commit-card");
+      if (!cards.length) return;
+      const lines = [];
+      cards.forEach(card => {
+        const sha    = card.querySelector(".sha")?.textContent ?? "";
+        const meta   = card.querySelector(".meta")?.textContent ?? "";
+        const msg    = card.querySelector(".commit-msg")?.textContent?.trim() ?? "";
+        const body   = card.querySelector(".commit-body");
+        lines.push(`=== Commit ${sha} — ${meta} ===`);
+        lines.push(msg);
+        body.querySelectorAll(".section-label").forEach(label => {
+          lines.push(`\n${label.textContent}`);
+          const next = label.nextElementSibling;
+          if (next) lines.push(next.textContent.trim());
+        });
+        lines.push("");
+      });
+      navigator.clipboard.writeText(lines.join("\n")).then(() => {
+        const btn = document.getElementById("copy-btn");
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = "Copy Report"; }, 2000);
+      });
+    });
 
     function riskClass(level) {
       return { Low: "risk-low", Medium: "risk-medium", High: "risk-high", Critical: "risk-critical" }[level] ?? "risk-medium";
@@ -507,6 +557,7 @@
         results.innerHTML = allResults.map(({ commit, analysis }, i) =>
           renderCommitCard(commit, analysis, i)
         ).join("");
+        setActionBar(true);
 
       } catch (e) {
         if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError")) {
