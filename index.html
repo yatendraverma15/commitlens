@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CommitLens — QA Commit Analyzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    header {
+      background: #0f172a;
+      color: #fff;
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+    header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+    header p  { margin-top: 0.4rem; color: #94a3b8; font-size: 0.95rem; }
+
+    /* MAIN */
+    main {
+      flex: 1;
+      max-width: 820px;
+      width: 100%;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* CARDS */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+      padding: 1.5rem;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* INPUTS */
+    .field { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+    .field:last-child { margin-bottom: 0; }
+    label { font-size: 0.85rem; font-weight: 500; color: #64748b; }
+    input[type="text"], input[type="number"] {
+      padding: 0.6rem 0.75rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+    input:focus { border-color: #6366f1; }
+
+    .radio-group {
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .radio-group label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #334155;
+    }
+
+    #sha-field, #n-field { transition: opacity 0.15s; }
+    .hidden { display: none !important; }
+
+    button#analyze-btn {
+      width: 100%;
+      padding: 0.75rem;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 0.25rem;
+    }
+    button#analyze-btn:hover:not(:disabled) { background: #4f46e5; }
+    button#analyze-btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+    /* EMPTY STATE */
+    #empty-state {
+      text-align: center;
+      color: #94a3b8;
+      padding: 2.5rem 1rem;
+      font-size: 0.95rem;
+    }
+
+    /* RESULTS */
+    #results-section { display: flex; flex-direction: column; gap: 1.25rem; }
+
+    .commit-card { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+    .commit-header {
+      background: #f8fafc;
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+    }
+    .commit-header .sha { font-family: monospace; font-size: 0.85rem; color: #6366f1; font-weight: 600; }
+    .commit-header .meta { font-size: 0.8rem; color: #64748b; }
+    .commit-header .toggle { color: #94a3b8; font-size: 1.1rem; }
+    .commit-body { padding: 1.1rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    .commit-msg { font-size: 0.9rem; color: #334155; font-style: italic; }
+
+    .section-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+    }
+
+    .qa-summary { font-size: 0.9rem; color: #334155; line-height: 1.6; }
+
+    .risk-badge {
+      display: inline-block;
+      padding: 0.3rem 0.9rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .risk-low      { background: #dcfce7; color: #15803d; }
+    .risk-medium   { background: #ffedd5; color: #c2410c; }
+    .risk-high     { background: #fee2e2; color: #b91c1c; }
+    .risk-critical { background: #7f1d1d; color: #fecaca; }
+
+    .risk-reasoning { font-size: 0.82rem; color: #64748b; margin-top: 0.4rem; font-style: italic; }
+
+    ul.bullet-list, ol.numbered-list {
+      padding-left: 1.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    ul.bullet-list li, ol.numbered-list li { font-size: 0.88rem; color: #334155; line-height: 1.5; }
+
+    /* ERROR */
+    .error-msg {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.88rem;
+    }
+
+    /* SPINNER */
+    .spinner-wrap { text-align: center; padding: 2rem; color: #64748b; font-size: 0.9rem; }
+    .spinner {
+      display: inline-block;
+      width: 28px; height: 28px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 0.5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ACTIONS */
+    .action-bar { display: flex; gap: 0.75rem; justify-content: flex-end; }
+    .btn-secondary {
+      padding: 0.45rem 1rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #fff;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: #475569;
+      transition: background 0.15s;
+    }
+    .btn-secondary:hover { background: #f1f5f9; }
+
+    /* FOOTER */
+    footer {
+      text-align: center;
+      padding: 1.25rem;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    footer a { color: #6366f1; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>CommitLens</h1>
+    <p>Analyze commits and generate QA insights instantly</p>
+  </header>
+
+  <main>
+    <!-- INPUT CARD -->
+    <div class="card">
+      <h2>Analyze Commits</h2>
+
+      <div class="field">
+        <label for="repo-url">GitHub Repository URL</label>
+        <input type="text" id="repo-url" placeholder="https://github.com/owner/repo" />
+      </div>
+
+      <div class="radio-group">
+        <label>
+          <input type="radio" name="mode" value="specific" checked />
+          Specific Commit
+        </label>
+        <label>
+          <input type="radio" name="mode" value="last-n" />
+          Last N Commits
+        </label>
+      </div>
+
+      <div id="sha-field" class="field">
+        <label for="commit-sha">Commit SHA</label>
+        <input type="text" id="commit-sha" placeholder="e.g. a1b2c3d" />
+      </div>
+
+      <div id="n-field" class="field hidden">
+        <label for="commit-count">Number of Commits (1–10)</label>
+        <input type="number" id="commit-count" min="1" max="10" value="5" />
+      </div>
+
+      <button id="analyze-btn">Analyze</button>
+    </div>
+
+    <!-- OUTPUT CARD -->
+    <div class="card" id="output-card">
+      <div id="empty-state">Enter a GitHub repo URL and commit details to get started.</div>
+      <div id="results-section" class="hidden"></div>
+    </div>
+  </main>
+
+  <footer>
+    Powered by <a href="https://www.anthropic.com" target="_blank">Claude</a> &amp; GitHub API
+  </footer>
+
+  <script src="config.js"></script>
+  <script>
+    // --- UI toggle ---
+    document.querySelectorAll('input[name="mode"]').forEach(radio => {
+      radio.addEventListener("change", () => {
+        const specific = radio.value === "specific";
+        document.getElementById("sha-field").classList.toggle("hidden", !specific);
+        document.getElementById("n-field").classList.toggle("hidden", specific);
+      });
+    });
+
+    // --- Helpers ---
+    function showEmpty() {
+      document.getElementById("empty-state").classList.remove("hidden");
+      document.getElementById("results-section").classList.add("hidden");
+      document.getElementById("results-section").innerHTML = "";
+    }
+
+    function showSpinner(msg) {
+      document.getElementById("empty-state").classList.add("hidden");
+      const sec = document.getElementById("results-section");
+      sec.classList.remove("hidden");
+      sec.innerHTML = `<div class="spinner-wrap"><span class="spinner"></span>${msg}</div>`;
+    }
+
+    function showError(msg) {
+      document.getElementById("empty-state").classList.add("hidden");
+      const sec = document.getElementById("results-section");
+      sec.classList.remove("hidden");
+      sec.innerHTML = `<div class="error-msg">${msg}</div>`;
+    }
+
+    function riskClass(level) {
+      return { Low: "risk-low", Medium: "risk-medium", High: "risk-high", Critical: "risk-critical" }[level] ?? "risk-medium";
+    }
+
+    function renderList(items, ordered) {
+      const tag = ordered ? "ol" : "ul";
+      const cls = ordered ? "numbered-list" : "bullet-list";
+      return `<${tag} class="${cls}">${items.map(i => `<li>${i}</li>`).join("")}</${tag}>`;
+    }
+
+    function renderCommitCard(commit, analysis, index) {
+      const shortSha = commit.sha.slice(0, 7);
+      const risk = analysis.risk_level ?? "Medium";
+      return `
+        <div class="commit-card">
+          <div class="commit-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
+            <span class="sha">${shortSha}</span>
+            <span class="meta">${commit.author} &middot; ${new Date(commit.date).toLocaleDateString()}</span>
+            <span class="toggle">&#9660;</span>
+          </div>
+          <div class="commit-body">
+            <div class="commit-msg">"${commit.message}"</div>
+
+            <div>
+              <div class="section-label">QA Summary</div>
+              <div class="qa-summary">${analysis.qa_summary ?? "—"}</div>
+            </div>
+
+            <div>
+              <div class="section-label">Risk Level</div>
+              <span class="risk-badge ${riskClass(risk)}">${risk}</span>
+              <div class="risk-reasoning">${analysis.risk_reasoning ?? ""}</div>
+            </div>
+
+            <div>
+              <div class="section-label">Impacted Functional Areas</div>
+              ${renderList(analysis.impacted_areas ?? [], false)}
+            </div>
+
+            <div>
+              <div class="section-label">Areas Needing Testing</div>
+              ${renderList(analysis.areas_needing_testing ?? [], false)}
+            </div>
+
+            <div>
+              <div class="section-label">Test Scenario Suggestions</div>
+              ${renderList(analysis.test_scenarios ?? [], true)}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // --- Analyze button (wired in Phase 4 & 5) ---
+    document.getElementById("analyze-btn").addEventListener("click", () => {
+      showError("GitHub and Claude integrations coming in next phases.");
+    });
+  </script>
+</body>
+</html>
