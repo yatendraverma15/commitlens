@@ -352,9 +352,50 @@
         </div>`;
     }
 
-    // --- Analyze button (wired in Phase 4 & 5) ---
+    // --- GitHub API ---
+    function parseRepoUrl(url) {
+      const match = url.trim().replace(/\.git$/, "").match(/github\.com\/([^/]+)\/([^/]+)/);
+      if (!match) throw new Error("Invalid GitHub URL.");
+      return { owner: match[1], repo: match[2] };
+    }
+
+    async function githubFetch(url, opts = {}) {
+      const res = await fetch(url, opts);
+      if (res.status === 404) throw new Error("Repository or commit not found. Check the URL or SHA.");
+      if (res.status === 403 || res.status === 429) throw new Error("GitHub API rate limit reached. Try again later.");
+      if (!res.ok) throw new Error(`GitHub API error (${res.status}).`);
+      return res;
+    }
+
+    async function fetchPatch(owner, repo, sha) {
+      const res = await githubFetch(
+        `https://api.github.com/repos/${owner}/${repo}/commits/${sha}`,
+        { headers: { Accept: "application/vnd.github.diff" } }
+      );
+      return res.text();
+    }
+
+    async function fetchCommit(owner, repo, sha) {
+      const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}`);
+      const data = await res.json();
+      return {
+        sha: data.sha,
+        message: data.commit.message.split("\n")[0],
+        author: data.commit.author.name,
+        date: data.commit.author.date,
+        files: (data.files ?? []).map(f => f.filename),
+      };
+    }
+
+    async function fetchLastNCommits(owner, repo, count) {
+      const res = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=${count}`);
+      const list = await res.json();
+      return Promise.all(list.map(c => fetchCommit(owner, repo, c.sha)));
+    }
+
+    // --- Analyze button (wired in Phase 5) ---
     document.getElementById("analyze-btn").addEventListener("click", () => {
-      showError("GitHub and Claude integrations coming in next phases.");
+      showError("Claude integration coming in next phase.");
     });
   </script>
 </body>
